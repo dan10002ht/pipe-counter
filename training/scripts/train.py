@@ -2,9 +2,11 @@
 Train YOLOv8 model for pipe detection.
 
 Usage:
-  python scripts/train.py              # Train from scratch (nano model)
-  python scripts/train.py --resume     # Resume from last checkpoint
-  python scripts/train.py --model s    # Use YOLOv8s (bigger, more accurate)
+  python scripts/train.py                    # Default: lightweight training
+  python scripts/train.py --model s          # Use YOLOv8s (bigger, more accurate)
+  python scripts/train.py --resume           # Resume from last checkpoint
+  python scripts/train.py --light            # Light mode (less lag)
+  python scripts/train.py --light --device cpu  # Lightest (no GPU usage)
 """
 
 import argparse
@@ -18,22 +20,28 @@ MODEL_SIZES = {
 }
 
 
-def train(model_size: str = "n", resume: bool = False):
+def train(model_size: str = "n", resume: bool = False, light: bool = False, device: str = "mps"):
     if resume:
         model = YOLO("runs/detect/pipe_detector/weights/last.pt")
     else:
         model = YOLO(MODEL_SIZES[model_size])
 
+    # Light mode: reduce resource usage
+    batch = 4 if light else 16
+    imgsz = 480 if light else 640
+    workers = 2 if light else 8
+
     model.train(
         data="data/dataset.yaml",
         epochs=150,
-        imgsz=640,
-        batch=16,
+        imgsz=imgsz,
+        batch=batch,
+        workers=workers,
         name="pipe_detector",
         exist_ok=True,     # overwrite previous run
         patience=30,       # early stopping
         save=True,
-        device="mps",      # Apple Silicon GPU; change to "0" for NVIDIA, "cpu" for CPU
+        device=device,
         # Data augmentation for better generalization
         augment=True,
         hsv_h=0.015,       # hue shift
@@ -54,5 +62,9 @@ if __name__ == "__main__":
                         help="Model size: n(ano), s(mall), m(edium)")
     parser.add_argument("--resume", action="store_true",
                         help="Resume training from last checkpoint")
+    parser.add_argument("--light", action="store_true",
+                        help="Light mode: batch=4, imgsz=480, workers=2 (less lag)")
+    parser.add_argument("--device", type=str, default="mps",
+                        help="Device: mps (Apple GPU), cpu, or 0 (NVIDIA)")
     args = parser.parse_args()
-    train(model_size=args.model, resume=args.resume)
+    train(model_size=args.model, resume=args.resume, light=args.light, device=args.device)
